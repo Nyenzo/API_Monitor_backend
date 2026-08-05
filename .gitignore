@@ -1,11 +1,11 @@
-# ── Python bytecode ──────────────────────────────────────────────────────────
+# Python bytecode 
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 *.pyd
 
-# ── Build / packaging ────────────────────────────────────────────────────────
+# Build / packaging 
 *.egg-info/
 dist/
 build/
@@ -13,19 +13,19 @@ build/
 .eggs/
 wheels/
 
-# ── Virtual environments ──────────────────────────────────────────────────────
+# Virtual environments 
 venv/
 .venv/
 env/
 .env.bak
 
-# ── Environment / secrets ────────────────────────────────────────────────────
+# Environment / secrets 
 .env
 .env.local
 .env.*.local
 supabase.txt
 
-# ── Testing & coverage ───────────────────────────────────────────────────────
+# Testing & coverage 
 .coverage
 coverage.xml
 htmlcov/
@@ -33,19 +33,19 @@ htmlcov/
 test-results/
 junit.xml
 
-# ── Type-checker caches ───────────────────────────────────────────────────────
+# Type-checker caches 
 .mypy_cache/
 .ruff_cache/
 
-# ── IDE ───────────────────────────────────────────────────────────────────────
+# IDE 
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# ── OS ────────────────────────────────────────────────────────────────────────
+# OS 
 .DS_Store
 Thumbs.db
 
-# ── Logs ─────────────────────────────────────────────────────────────────────
+# Logs 
 *.log
