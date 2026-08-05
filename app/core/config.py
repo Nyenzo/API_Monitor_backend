@@ -22,15 +22,24 @@ class Settings(BaseSettings):
     default_timeout_ms: int = 10000
     max_concurrent_checks: int = 200
 
-    # SMTP settings used by the email alert sender
+    # SMTP settings for email alert notifications (optional — alerts are skipped if smtp_host is empty)
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
-    smtp_from_email: str = "alerts@apexwatch.dev"
+    smtp_from_email: str = "alerts@example.com"
+
+    # Dedicated monitoring service account — used for long-running self-checks
+    # without relying on a user JWT that expires every hour.
+    # MONITOR_API_KEY   — random secret your monitor stores in its Headers field
+    # MONITOR_EMAIL     — email of the service account created in Supabase Auth
+    # MONITOR_PASSWORD  — password of that account
+    monitor_api_key: str = ""
+    monitor_email: str = ""
+    monitor_password: str = ""
 
     # Application metadata surfaced in docs and health endpoint
-    app_name: str = "ApexWatch"
+    app_name: str = "API Monitor"
     app_version: str = "1.0.0"
     debug: bool = False
 
