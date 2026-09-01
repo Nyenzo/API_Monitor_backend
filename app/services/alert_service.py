@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import smtplib
 from email.mime.text import MIMEText
@@ -5,6 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone, timedelta
 from supabase import Client
 from app.core.config import get_settings
+from app.core.network_security import validate_public_http_url
 
 
 # Scan all active alert rules and fire notifications for monitors that have been failing
@@ -117,16 +119,20 @@ async def send_email_alert(settings, target: str, payload: dict) -> None:
         f"Time: {payload['triggered_at']}\n"
     )
     msg.attach(MIMEText(body, "plain"))
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-        server.starttls()
-        server.login(settings.smtp_username, settings.smtp_password)
-        server.sendmail(settings.smtp_from_email, target, msg.as_string())
+    def deliver() -> None:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+            server.starttls()
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.sendmail(settings.smtp_from_email, target, msg.as_string())
+
+    await asyncio.to_thread(deliver)
 
 
 # Send a Slack message via incoming webhook with formatted alert blocks
 async def send_slack_alert(webhook_url: str, payload: dict) -> None:
+    await validate_public_http_url(webhook_url)
     async with httpx.AsyncClient(timeout=10.0) as client:
-        await client.post(webhook_url, json={
+        response = await client.post(webhook_url, json={
             "text": f":rotating_light: *{payload['monitor_name']}* is DOWN",
             "blocks": [
                 {
@@ -143,9 +149,12 @@ async def send_slack_alert(webhook_url: str, payload: dict) -> None:
                 }
             ],
         })
+        response.raise_for_status()
 
 
 # POST the raw alert payload to an arbitrary webhook URL
 async def send_webhook_alert(webhook_url: str, payload: dict) -> None:
+    await validate_public_http_url(webhook_url)
     async with httpx.AsyncClient(timeout=10.0) as client:
-        await client.post(webhook_url, json=payload)
+        response = await client.post(webhook_url, json=payload)
+        response.raise_for_status()

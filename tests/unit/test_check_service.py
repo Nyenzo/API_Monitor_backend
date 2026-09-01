@@ -5,6 +5,14 @@ import httpx
 from app.services.check_service import execute_single_check
 
 
+@pytest.fixture(autouse=True)
+def allow_mocked_targets(monkeypatch):
+    async def allow_target(_: str) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.check_service.validate_public_http_url", allow_target)
+
+
 class TestExecuteSingleCheck:
     # Successful GET check returning expected status
     async def test_successful_check(self):
@@ -148,3 +156,19 @@ class TestExecuteSingleCheck:
 
         result = await execute_single_check(client, monitor)
         assert result["response_size_bytes"] == 2048
+
+    async def test_private_target_is_rejected_before_request(self, monkeypatch):
+        async def reject_target(_: str) -> None:
+            raise ValueError("Target must resolve exclusively to public IP addresses")
+
+        monkeypatch.setattr("app.services.check_service.validate_public_http_url", reject_target)
+        client = AsyncMock()
+        result = await execute_single_check(client, {
+            "id": "mon-private",
+            "url": "http://127.0.0.1/admin",
+            "method": "GET",
+        })
+
+        assert result["success"] is False
+        assert result["error_message"] == "Target must resolve exclusively to public IP addresses"
+        client.request.assert_not_awaited()

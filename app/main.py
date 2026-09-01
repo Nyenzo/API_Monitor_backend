@@ -85,7 +85,7 @@ app.add_middleware(
     allow_origins=app_settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Internal-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-Internal-Key", "X-Monitor-Api-Key"],
 )
 
 # Register all v1 API routers under the /api/v1 prefix

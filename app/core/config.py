@@ -1,5 +1,6 @@
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pydantic import field_validator
+from pydantic_settings import BaseSettings
 
 
 # Central configuration loaded from environment variables via pydantic-settings
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
     # Default timeouts and concurrency for health-check execution
     default_timeout_ms: int = 10000
     max_concurrent_checks: int = 200
+    max_checks_per_run: int = 500
 
     # SMTP settings for email alert notifications (optional — alerts are skipped if smtp_host is empty)
     smtp_host: str = ""
@@ -44,7 +46,23 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Read from .env file at the project root
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
+
+    # Accept common deployment mode strings so production envs do not crash startup
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value: bool | str) -> bool | str:
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "debug", "development", "dev"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "release", "production", "prod"}:
+                return False
+        return value
 
     # Split the comma-separated CORS string into a list for FastAPI middleware
     @property

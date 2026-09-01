@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from datetime import datetime, timezone
 
 from app.core.config import Settings, get_settings
-from app.core.dependencies import get_supabase_client, get_supabase_admin, get_http_client
+from app.core.dependencies import get_authed_supabase, get_supabase_client, get_supabase_admin, get_http_client
 from app.core.security import get_current_user, verify_internal_key
 
 
@@ -113,6 +113,7 @@ def client():
     app.dependency_overrides[get_current_user] = _fake_user
     app.dependency_overrides[get_supabase_client] = lambda: mock_sb
     app.dependency_overrides[get_supabase_admin] = lambda: mock_sb
+    app.dependency_overrides[get_authed_supabase] = lambda: mock_sb
 
     with TestClient(app) as c:
         yield c
@@ -129,6 +130,7 @@ def authed_client():
     app.dependency_overrides[get_current_user] = _fake_user
     app.dependency_overrides[get_supabase_client] = lambda: mock_sb
     app.dependency_overrides[get_supabase_admin] = lambda: mock_sb
+    app.dependency_overrides[get_authed_supabase] = lambda: mock_sb
 
     with TestClient(app) as c:
         yield c
@@ -143,6 +145,7 @@ def profile_client():
     app.dependency_overrides[get_settings] = _test_settings
     app.dependency_overrides[get_current_user] = _fake_user
     app.dependency_overrides[get_supabase_client] = lambda: mock_sb
+    app.dependency_overrides[get_authed_supabase] = lambda: mock_sb
 
     with TestClient(app) as c:
         yield c
@@ -162,6 +165,7 @@ def check_result_client():
     app.dependency_overrides[get_current_user] = _fake_user
     app.dependency_overrides[get_supabase_client] = lambda: mock_sb
     app.dependency_overrides[get_supabase_admin] = lambda: mock_sb
+    app.dependency_overrides[get_authed_supabase] = lambda: mock_sb
 
     with TestClient(app) as c:
         yield c
@@ -181,6 +185,7 @@ def export_client():
     app.dependency_overrides[get_current_user] = _fake_user
     app.dependency_overrides[get_supabase_client] = lambda: mock_sb
     app.dependency_overrides[get_supabase_admin] = lambda: mock_sb
+    app.dependency_overrides[get_authed_supabase] = lambda: mock_sb
 
     with TestClient(app) as c:
         yield c
@@ -278,6 +283,12 @@ class TestProfileEndpoints:
 # -- Dashboard endpoint --
 
 class TestDashboardEndpoints:
+    def test_dashboard_alias(self, client):
+        response = client.get("/api/v1/dashboard")
+        assert response.status_code == 200
+        data = response.json()
+        assert "total_monitors" in data
+
     def test_dashboard_summary(self, client):
         response = client.get("/api/v1/dashboard/summary")
         assert response.status_code == 200

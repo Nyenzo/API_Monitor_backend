@@ -3,6 +3,7 @@ import time
 import httpx
 from supabase import Client
 from datetime import datetime, timezone
+from app.core.network_security import validate_public_http_url
 
 
 # Perform a single HTTP request against a monitor's URL and record the outcome
@@ -23,6 +24,7 @@ async def execute_single_check(
         "response_snippet": "",
     }
     try:
+        await validate_public_http_url(monitor["url"])
         # Build the request from the monitor's configuration
         timeout = httpx.Timeout(monitor.get("timeout_ms", 10000) / 1000.0)
         headers = monitor.get("headers", {}) or {}
@@ -53,6 +55,8 @@ async def execute_single_check(
             result["error_message"] = f"Expected status {monitor['expected_status']}, got {response.status_code}"
         elif not body_ok:
             result["error_message"] = "Response body missing expected content"
+    except ValueError as exc:
+        result["error_message"] = str(exc)
     except httpx.TimeoutException:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         result["response_time_ms"] = elapsed_ms
@@ -69,9 +73,13 @@ async def run_checks_for_due_monitors(
     supabase_admin: Client,
     http_client: httpx.AsyncClient,
     max_concurrent: int = 200,
+    max_checks_per_run: int = 500,
 ) -> int:
-    # Try the RPC first, fall back to a direct query if it does not exist
-    response = supabase_admin.rpc("get_due_monitors").execute()
+    # Lease monitors in PostgreSQL so concurrent workers cannot check the same target.
+    response = supabase_admin.rpc(
+        "get_due_monitors",
+        {"batch_size": max_checks_per_run},
+    ).execute()
     monitors = response.data if response.data else []
     if not monitors:
         response = (
@@ -112,6 +120,7 @@ async def run_checks_for_due_monitors(
         supabase_admin.table("monitors").update({
             "last_checked_at": datetime.now(timezone.utc).isoformat(),
             "last_check_success": r["success"],
+            "check_lease_until": None,
         }).eq("id", r["monitor_id"]).execute()
 
     return len(valid_results)
@@ -128,5 +137,6 @@ async def run_single_check(
     supabase_admin.table("monitors").update({
         "last_checked_at": datetime.now(timezone.utc).isoformat(),
         "last_check_success": result["success"],
+        "check_lease_until": None,
     }).eq("id", monitor["id"]).execute()
     return result

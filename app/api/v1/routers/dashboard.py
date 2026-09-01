@@ -10,6 +10,7 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
 # Aggregate dashboard stats: monitor counts, uptime, avg latency, and recent alerts
+@router.get("", response_model=DashboardSummary)
 @router.get("/summary", response_model=DashboardSummary)
 async def get_dashboard_summary(
     user: dict = Depends(get_current_user),
@@ -18,7 +19,7 @@ async def get_dashboard_summary(
     # Fetch all monitors for this user
     monitors_resp = (
         supabase.table("monitors")
-        .select("id, is_active")
+        .select("id, is_active, last_check_success")
         .eq("user_id", user["id"])
         .execute()
     )
@@ -34,27 +35,12 @@ async def get_dashboard_summary(
             recent_alerts=[], checks_last_24h=0,
         )
 
-    # Get latest check result per monitor to determine up/down status
-    up_count = 0
-    down_count = 0
+    # Last-check fields keep this summary bounded instead of issuing one query per monitor.
+    up_count = sum(1 for monitor in monitors if monitor.get("last_check_success") is True)
+    down_count = sum(1 for monitor in monitors if monitor.get("last_check_success") is False)
     all_response_times: list[int] = []
     all_successes: list[bool] = []
     since_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-
-    for mid in monitor_ids:
-        latest = (
-            supabase.table("check_results")
-            .select("success, response_time_ms")
-            .eq("monitor_id", mid)
-            .order("timestamp", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if latest.data:
-            if latest.data[0]["success"]:
-                up_count += 1
-            else:
-                down_count += 1
 
     # 24h aggregate stats
     checks_24h_resp = (

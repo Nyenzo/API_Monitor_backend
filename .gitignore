@@ -18,6 +18,7 @@ venv/
 .venv/
 env/
 .env.bak
+node_modules/
 
 # Environment / secrets 
 .env
@@ -49,3 +50,5 @@ Thumbs.db
 
 # Logs 
 *.log
+.vercel
+.env*

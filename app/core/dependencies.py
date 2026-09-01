@@ -23,7 +23,15 @@ _monitor_access_token: str | None = None
 _monitor_token_expires_at: float = 0.0  # unix timestamp
 
 
-async def _get_monitor_token(settings: Settings) -> str:
+def validate_monitor_api_key(settings: Settings, supplied_key: str | None) -> None:
+    if supplied_key != settings.monitor_api_key or not settings.monitor_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid monitor API key.",
+        )
+
+
+async def get_monitor_access_token(settings: Settings) -> str:
     """Sign in as the monitoring service account and cache the JWT.
     Refreshes automatically when the token is within 60 seconds of expiry.
     """
@@ -85,12 +93,8 @@ async def get_authed_supabase(
 ) -> Client:
     # --- Monitoring service account path ---
     if x_monitor_api_key is not None:
-        if not settings.monitor_api_key or x_monitor_api_key != settings.monitor_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid monitor API key.",
-            )
-        token = await _get_monitor_token(settings)
+        validate_monitor_api_key(settings, x_monitor_api_key)
+        token = await get_monitor_access_token(settings)
         client = create_client(settings.supabase_url, settings.supabase_anon_key)
         client.postgrest.auth(token)
         return client

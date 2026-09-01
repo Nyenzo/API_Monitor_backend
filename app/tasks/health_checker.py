@@ -18,6 +18,7 @@ async def run_scheduled_checks() -> dict:
         supabase_admin=supabase_admin,
         http_client=http_client,
         max_concurrent=settings.max_concurrent_checks,
+        max_checks_per_run=settings.max_checks_per_run,
     )
     logger.info(f"Completed {checks_run} health checks")
 
