@@ -29,12 +29,13 @@ async def get_monitor(supabase: Client, monitor_id: str, user_id: str) -> dict:
         .select("*")
         .eq("id", monitor_id)
         .eq("user_id", user_id)
-        .single()
+        .limit(1)
         .execute()
     )
-    if not response.data:
+    monitors = response.data or []
+    if not monitors:
         raise NotFoundError("Monitor")
-    return response.data
+    return monitors[0]
 
 
 # Insert a new monitor record for the authenticated user

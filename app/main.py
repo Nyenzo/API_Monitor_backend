@@ -1,49 +1,20 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-import asyncio
 import logging
 
 from app.core.config import get_settings
 from app.core.rate_limiter import limiter
 from app.core.dependencies import init_supabase_clients, close_http_client
 from app.api.v1.routers import auth, profiles, monitors, check_results, alerts, contracts, dashboard, internal, release_verifications
-from app.tasks.health_checker import run_scheduled_checks
 
 # Configure structured logging for the entire application
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("api_monitor")
-
-
-# Background task that runs health checks every 60 seconds, complementing the pg_cron trigger.
-# Fires immediately on startup so monitors are checked as soon as the server comes up.
-async def _background_scheduler() -> None:
-    # First run immediately so there's no 60s wait after a restart
-    try:
-        result = await run_scheduled_checks()
-        if result["checks_run"] > 0:
-            logger.info(
-                "Scheduler (startup): %s checks, %s alerts",
-                result["checks_run"],
-                result["alerts_triggered"],
-            )
-    except (RuntimeError, ValueError, KeyError, TypeError) as exc:
-        logger.error("Scheduler startup error: %s", exc)
-    while True:
-        await asyncio.sleep(60)
-        try:
-            result = await run_scheduled_checks()
-            if result["checks_run"] > 0:
-                logger.info(
-                    "Scheduler: %s checks, %s alerts",
-                    result["checks_run"],
-                    result["alerts_triggered"],
-                )
-        except (RuntimeError, ValueError, KeyError, TypeError) as exc:
-            logger.error("Scheduler error: %s", exc)
 
 
 # Lifespan context manager that initializes shared clients on startup and tears them down on shutdown
@@ -51,14 +22,8 @@ async def _background_scheduler() -> None:
 async def lifespan(_: FastAPI):
     runtime_settings = get_settings()
     init_supabase_clients(runtime_settings)
-    task = asyncio.create_task(_background_scheduler())
     logger.info("API Monitor backend started")
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
     await close_http_client()
     logger.info("API Monitor backend stopped")
 
@@ -100,6 +65,21 @@ app.include_router(contracts.router, prefix="/api/v1")
 app.include_router(release_verifications.router, prefix="/api/v1")
 
 
+def apply_cors_headers(request: Request, response: Response) -> Response:
+    origin = request.headers.get("origin")
+    if origin and origin in app_settings.cors_origin_list:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_with_cors(request: Request, exc: HTTPException) -> Response:
+    response = await http_exception_handler(request, exc)
+    return apply_cors_headers(request, response)
+
+
 # Simple health-check endpoint for load balancers and Docker health probes
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict:
@@ -110,7 +90,8 @@ async def health_check() -> dict:
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc)
-    return JSONResponse(
+    response = JSONResponse(
         status_code=500,
         content={"detail": "An unexpected error occurred"},
     )
+    return apply_cors_headers(request, response)

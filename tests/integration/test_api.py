@@ -265,6 +265,17 @@ class TestMonitorEndpoints:
         response = authed_client.get("/api/v1/monitors/mon-uuid-1234")
         assert response.status_code == 200
 
+    def test_missing_monitor_returns_cors_enabled_not_found(self, client):
+        from app.main import app_settings
+
+        origin = app_settings.cors_origin_list[0]
+        response = client.get(
+            "/api/v1/monitors/missing-monitor",
+            headers={"Origin": origin},
+        )
+        assert response.status_code == 404
+        assert response.headers["access-control-allow-origin"] == origin
+
     def test_update_monitor(self, authed_client):
         response = authed_client.patch("/api/v1/monitors/mon-uuid-1234", json={
             "name": "Updated",

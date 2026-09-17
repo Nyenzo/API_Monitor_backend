@@ -51,9 +51,10 @@ class TestMonitorService:
         assert chain.eq.call_count >= 2
 
     async def test_get_monitor_found(self, sample_monitor):
-        sb, chain = self._make_supabase(data=sample_monitor)
+        sb, chain = self._make_supabase(data=[sample_monitor])
         result = await get_monitor(sb, "mon-uuid-1234", "user-uuid-1234")
         assert result["name"] == "Test API"
+        chain.limit.assert_called_once_with(1)
 
     async def test_get_monitor_not_found(self):
         sb, chain = self._make_supabase(data=None)
@@ -70,10 +71,8 @@ class TestMonitorService:
     async def test_update_monitor(self, sample_monitor):
         # get_monitor needs to succeed, then update returns data
         sb, chain = self._make_supabase(data=[{**sample_monitor, "name": "Updated"}])
-        # Mock get_monitor to not raise
-        chain.single.return_value = chain
         result_mock = MagicMock()
-        result_mock.data = sample_monitor
+        result_mock.data = [sample_monitor]
         chain.execute.side_effect = [result_mock, MagicMock(data=[{**sample_monitor, "name": "Updated"}])]
 
         payload = MonitorUpdate(name="Updated")
@@ -81,7 +80,7 @@ class TestMonitorService:
         assert result["name"] == "Updated"
 
     async def test_delete_monitor(self, sample_monitor):
-        sb, chain = self._make_supabase(data=sample_monitor)
+        sb, chain = self._make_supabase(data=[sample_monitor])
         await delete_monitor(sb, "mon-uuid-1234", "user-uuid-1234")
         chain.delete.assert_called()
 
@@ -89,7 +88,7 @@ class TestMonitorService:
         toggled = {**sample_monitor, "is_active": False}
         sb, chain = self._make_supabase(data=[toggled])
         result_mock = MagicMock()
-        result_mock.data = sample_monitor
+        result_mock.data = [sample_monitor]
         chain.execute.side_effect = [result_mock, MagicMock(data=[toggled])]
 
         result = await toggle_monitor(sb, "mon-uuid-1234", "user-uuid-1234", False)
