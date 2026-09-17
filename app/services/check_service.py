@@ -1,9 +1,20 @@
 import asyncio
+import json
 import time
 import httpx
 from supabase import Client
 from datetime import datetime, timezone
 from app.core.network_security import validate_public_http_url
+
+
+def find_missing_json_path(payload: object, paths: list[str]) -> str | None:
+    for path in paths:
+        current = payload
+        for key in path.split("."):
+            if not isinstance(current, dict) or key not in current:
+                return path
+            current = current[key]
+    return None
 
 
 # Perform a single HTTP request against a monitor's URL and record the outcome
@@ -50,10 +61,21 @@ async def execute_single_check(
         body_ok = True
         if monitor.get("expected_body_contains"):
             body_ok = monitor["expected_body_contains"] in body_text
+        required_json_paths = monitor.get("required_json_paths") or []
+        if required_json_paths:
+            try:
+                missing_path = find_missing_json_path(response.json(), required_json_paths)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                body_ok = False
+                result["error_message"] = "Response body is not valid JSON"
+            else:
+                if missing_path:
+                    body_ok = False
+                    result["error_message"] = f"Required JSON path missing: {missing_path}"
         result["success"] = status_ok and body_ok
         if not status_ok:
             result["error_message"] = f"Expected status {monitor['expected_status']}, got {response.status_code}"
-        elif not body_ok:
+        elif not body_ok and not result["error_message"]:
             result["error_message"] = "Response body missing expected content"
     except ValueError as exc:
         result["error_message"] = str(exc)
@@ -131,8 +153,11 @@ async def run_single_check(
     supabase_admin: Client,
     http_client: httpx.AsyncClient,
     monitor: dict,
+    release_verification_id: str | None = None,
 ) -> dict:
     result = await execute_single_check(http_client, monitor)
+    if release_verification_id:
+        result["release_verification_id"] = release_verification_id
     supabase_admin.table("check_results").insert(result).execute()
     supabase_admin.table("monitors").update({
         "last_checked_at": datetime.now(timezone.utc).isoformat(),

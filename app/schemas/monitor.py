@@ -15,6 +15,9 @@ class MonitorCreate(BaseModel):
     timeout_ms: int = Field(default=10000, ge=1000, le=60000)
     expected_status: int = Field(default=200, ge=100, le=599)
     expected_body_contains: str = ""
+    monitor_kind: str = Field(default="uptime", pattern="^(uptime|contract)$")
+    contract_operation_id: str | None = Field(default=None, max_length=255)
+    required_json_paths: list[str] = Field(default_factory=list, max_length=20)
 
     # Ensure the URL starts with http:// or https://
     @field_validator("url")
@@ -23,6 +26,14 @@ class MonitorCreate(BaseModel):
         if not re.match(r"^https?://", v):
             raise ValueError("URL must start with http:// or https://")
         return v
+
+    @field_validator("required_json_paths")
+    @classmethod
+    def validate_json_paths(cls, paths: list[str]) -> list[str]:
+        for path in paths:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", path):
+                raise ValueError("JSON paths must use dot-separated object keys")
+        return paths
 
 
 # Optional fields for partially updating an existing monitor
@@ -37,6 +48,9 @@ class MonitorUpdate(BaseModel):
     expected_status: int | None = Field(default=None, ge=100, le=599)
     expected_body_contains: str | None = None
     is_active: bool | None = None
+    monitor_kind: str | None = Field(default=None, pattern="^(uptime|contract)$")
+    contract_operation_id: str | None = Field(default=None, max_length=255)
+    required_json_paths: list[str] | None = Field(default=None, max_length=20)
 
     # Same URL scheme validation applied when a new URL is provided
     @field_validator("url")
@@ -45,6 +59,13 @@ class MonitorUpdate(BaseModel):
         if v is not None and not re.match(r"^https?://", v):
             raise ValueError("URL must start with http:// or https://")
         return v
+
+    @field_validator("required_json_paths")
+    @classmethod
+    def validate_json_paths(cls, paths: list[str] | None) -> list[str] | None:
+        if paths is not None:
+            MonitorCreate.validate_json_paths(paths)
+        return paths
 
 
 # Complete monitor representation returned to the client
@@ -60,6 +81,9 @@ class MonitorResponse(BaseModel):
     timeout_ms: int
     expected_status: int | None
     expected_body_contains: str
+    monitor_kind: str = "uptime"
+    contract_operation_id: str | None = None
+    required_json_paths: list[str] = Field(default_factory=list)
     is_active: bool
     last_check_success: bool | None = None
     last_checked_at: datetime | None

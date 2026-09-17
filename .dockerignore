@@ -2,8 +2,14 @@
 .env.*
 !.env.example
 .venv/
+node_modules/
+.git/
+.vercel/
 __pycache__/
+*.py[cod]
 .pytest_cache/
 .coverage
 htmlcov/
 tests/
+test-results/
+playwright-report/

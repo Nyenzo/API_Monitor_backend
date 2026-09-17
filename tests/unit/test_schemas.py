@@ -65,6 +65,24 @@ class TestMonitorCreate:
         m = MonitorCreate(name="POST API", url="https://api.example.com", method=HttpMethod.POST)
         assert m.method == HttpMethod.POST
 
+    def test_contract_monitor_accepts_object_json_paths(self):
+        monitor = MonitorCreate(
+            name="Customer API contract",
+            url="https://api.example.com/customers",
+            monitor_kind="contract",
+            contract_operation_id="listCustomers",
+            required_json_paths=["data.id", "data.status"],
+        )
+        assert monitor.monitor_kind == "contract"
+
+    def test_contract_monitor_rejects_unsupported_json_path_syntax(self):
+        with pytest.raises(ValidationError):
+            MonitorCreate(
+                name="Customer API contract",
+                url="https://api.example.com/customers",
+                required_json_paths=["data[0].id"],
+            )
+
     def test_url_without_scheme_rejected(self):
         with pytest.raises(ValidationError):
             MonitorCreate(name="Bad", url="api.example.com")

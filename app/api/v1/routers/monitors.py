@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from supabase import Client
 from app.core.dependencies import get_authed_supabase, get_supabase_admin, get_http_client
 from app.core.security import get_current_user
@@ -8,9 +8,17 @@ from app.schemas.monitor import (
 )
 from app.services import monitor_service
 from app.services.check_service import run_single_check
+from app.core.network_security import validate_public_http_url
 import httpx
 
 router = APIRouter(prefix="/monitors", tags=["Monitors"])
+
+
+async def validate_monitor_target(url: str) -> None:
+    try:
+        await validate_public_http_url(url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # List all monitors for the current user with optional filtering and search
@@ -41,6 +49,7 @@ async def create_monitor(
     user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_authed_supabase),
 ) -> MonitorResponse:
+    await validate_monitor_target(payload.url)
     data = await monitor_service.create_monitor(supabase, user["id"], payload)
     return MonitorResponse(**data)
 
@@ -64,6 +73,8 @@ async def update_monitor(
     user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_authed_supabase),
 ) -> MonitorResponse:
+    if payload.url is not None:
+        await validate_monitor_target(payload.url)
     data = await monitor_service.update_monitor(supabase, monitor_id, user["id"], payload)
     return MonitorResponse(**data)
 

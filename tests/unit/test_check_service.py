@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 import httpx
@@ -91,6 +93,66 @@ class TestExecuteSingleCheck:
         result = await execute_single_check(client, monitor)
         assert result["success"] is False
         assert "missing expected content" in result["error_message"]
+
+    async def test_required_json_path_is_recorded_as_a_contract_failure(self):
+        response = httpx.Response(
+            status_code=200,
+            content=b'{"data": {"id": "customer-1"}}',
+            request=httpx.Request("GET", "https://api.example.com"),
+        )
+        client = AsyncMock()
+        client.request.return_value = response
+
+        result = await execute_single_check(client, {
+            "id": "contract-1",
+            "url": "https://api.example.com",
+            "method": "GET",
+            "expected_status": 200,
+            "required_json_paths": ["data.id", "data.subscription.status"],
+        })
+
+        assert result["success"] is False
+        assert result["error_message"] == "Required JSON path missing: data.subscription.status"
+
+    async def test_required_json_path_rejects_non_json_response(self):
+        response = httpx.Response(
+            status_code=200,
+            content=b"not-json",
+            request=httpx.Request("GET", "https://api.example.com"),
+        )
+        client = AsyncMock()
+        client.request.return_value = response
+
+        result = await execute_single_check(client, {
+            "id": "contract-2",
+            "url": "https://api.example.com",
+            "method": "GET",
+            "expected_status": 200,
+            "required_json_paths": ["data.id"],
+        })
+
+        assert result["success"] is False
+        assert result["error_message"] == "Response body is not valid JSON"
+
+    async def test_required_json_path_uses_the_full_response_body(self):
+        response = httpx.Response(
+            status_code=200,
+            content=json.dumps({"padding": "x" * 600, "data": {"id": "customer-1"}}).encode(),
+            request=httpx.Request("GET", "https://api.example.com"),
+        )
+        client = AsyncMock()
+        client.request.return_value = response
+
+        result = await execute_single_check(client, {
+            "id": "contract-large-response",
+            "url": "https://api.example.com",
+            "method": "GET",
+            "expected_status": 200,
+            "required_json_paths": ["data.id"],
+        })
+
+        assert result["success"] is True
+        assert len(result["response_snippet"]) == 200
 
     # Check handles timeout gracefully
     async def test_timeout_handling(self):

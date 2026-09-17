@@ -9,7 +9,7 @@ import logging
 from app.core.config import get_settings
 from app.core.rate_limiter import limiter
 from app.core.dependencies import init_supabase_clients, close_http_client
-from app.api.v1.routers import auth, profiles, monitors, check_results, alerts, dashboard, internal
+from app.api.v1.routers import auth, profiles, monitors, check_results, alerts, contracts, dashboard, internal, release_verifications
 
 # Configure structured logging for the entire application
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -60,6 +60,8 @@ app.include_router(check_results.router, prefix="/api/v1")
 app.include_router(alerts.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(internal.router, prefix="/api/v1")
+app.include_router(contracts.router, prefix="/api/v1")
+app.include_router(release_verifications.router, prefix="/api/v1")
 
 
 # Simple health-check endpoint for load balancers and Docker health probes

@@ -225,12 +225,28 @@ class TestMonitorEndpoints:
         assert "monitors" in data
         assert "total" in data
 
-    def test_create_monitor(self, authed_client):
+    def test_create_monitor(self, authed_client, monkeypatch):
+        async def allow_target(_: str) -> None:
+            return None
+
+        monkeypatch.setattr("app.api.v1.routers.monitors.validate_public_http_url", allow_target)
         response = authed_client.post("/api/v1/monitors", json={
             "name": "New API",
             "url": "https://new-api.example.com/health",
         })
         assert response.status_code == 201
+
+    def test_create_monitor_rejects_unsafe_target(self, authed_client, monkeypatch):
+        async def reject_target(_: str) -> None:
+            raise ValueError("Target must resolve exclusively to public IP addresses")
+
+        monkeypatch.setattr("app.api.v1.routers.monitors.validate_public_http_url", reject_target)
+        response = authed_client.post("/api/v1/monitors", json={
+            "name": "Unsafe API",
+            "url": "http://127.0.0.1/health",
+        })
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Target must resolve exclusively to public IP addresses"
 
     def test_create_monitor_invalid_url(self, client):
         response = client.post("/api/v1/monitors", json={
@@ -255,6 +271,17 @@ class TestMonitorEndpoints:
         })
         assert response.status_code == 200
 
+    def test_update_monitor_rejects_unsafe_target(self, authed_client, monkeypatch):
+        async def reject_target(_: str) -> None:
+            raise ValueError("Target must resolve exclusively to public IP addresses")
+
+        monkeypatch.setattr("app.api.v1.routers.monitors.validate_public_http_url", reject_target)
+        response = authed_client.patch("/api/v1/monitors/mon-uuid-1234", json={
+            "url": "http://127.0.0.1/health",
+        })
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Target must resolve exclusively to public IP addresses"
+
     def test_delete_monitor(self, authed_client):
         response = authed_client.delete("/api/v1/monitors/mon-uuid-1234")
         assert response.status_code == 204
@@ -264,6 +291,77 @@ class TestMonitorEndpoints:
             "is_active": False,
         })
         assert response.status_code == 200
+
+
+# -- Contract import endpoints --
+
+class TestContractEndpoints:
+    def test_openapi_preview_records_activation_event(self, authed_client, monkeypatch):
+        recorded_user_ids = []
+
+        def record_preview(_supabase, user_id: str) -> None:
+            recorded_user_ids.append(user_id)
+
+        monkeypatch.setattr("app.api.v1.routers.contracts.product_metrics_service.record_openapi_preview", record_preview)
+        response = authed_client.post("/api/v1/contracts/openapi/preview", json={
+            "document": {
+                "openapi": "3.0.3",
+                "servers": [{"url": "https://api.example.com"}],
+                "paths": {"/health": {"get": {"responses": {"200": {"description": "OK"}}}}},
+            },
+        })
+
+        assert response.status_code == 200
+        assert recorded_user_ids == ["user-uuid-1234"]
+
+    def test_contract_import_validates_all_targets_before_creating(self, authed_client, monkeypatch):
+        from fastapi import HTTPException
+
+        async def validate_target(url: str) -> None:
+            if url.endswith("unsafe"):
+                raise HTTPException(status_code=422, detail="Target must resolve exclusively to public IP addresses")
+
+        create_monitor = AsyncMock()
+        monkeypatch.setattr("app.api.v1.routers.contracts.validate_monitor_target", validate_target)
+        monkeypatch.setattr("app.api.v1.routers.contracts.monitor_service.create_monitor", create_monitor)
+
+        response = authed_client.post("/api/v1/contracts/monitors", json={
+            "monitors": [
+                {"name": "Safe operation", "url": "https://api.example.com/health"},
+                {"name": "Unsafe operation", "url": "https://api.example.com/unsafe"},
+            ],
+        })
+
+        assert response.status_code == 422
+        create_monitor.assert_not_awaited()
+
+
+# -- Release verification endpoints --
+
+class TestReleaseVerificationEndpoints:
+    def test_list_release_verifications(self, client):
+        response = client.get("/api/v1/release-verifications")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_get_missing_release_verification_returns_not_found(self, client):
+        response = client.get("/api/v1/release-verifications/missing-run")
+
+        assert response.status_code == 404
+
+
+class TestInternalMetricsEndpoint:
+    def test_activation_metrics_requires_internal_key(self, client):
+        response = client.get("/api/v1/internal/activation-metrics")
+
+        assert response.status_code == 403
+
+    def test_activation_metrics_returns_bounded_summary(self, client):
+        response = client.get("/api/v1/internal/activation-metrics", headers={"X-Internal-Key": "test-internal-key"})
+
+        assert response.status_code == 200
+        assert response.json()["imported_spec_users"] == 0
 
 
 # -- Profile endpoints --
