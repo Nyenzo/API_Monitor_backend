@@ -94,6 +94,26 @@ class TestExecuteSingleCheck:
         assert result["success"] is False
         assert "missing expected content" in result["error_message"]
 
+    async def test_body_expectation_uses_the_full_response(self):
+        response = httpx.Response(
+            status_code=200,
+            content=(b"x" * 600) + b"expected-marker",
+            request=httpx.Request("GET", "https://api.example.com"),
+        )
+        client = AsyncMock()
+        client.request.return_value = response
+
+        result = await execute_single_check(client, {
+            "id": "mon-full-body",
+            "url": "https://api.example.com",
+            "method": "GET",
+            "expected_status": 200,
+            "expected_body_contains": "expected-marker",
+        })
+
+        assert result["success"] is True
+        assert len(result["response_snippet"]) == 200
+
     async def test_required_json_path_is_recorded_as_a_contract_failure(self):
         response = httpx.Response(
             status_code=200,

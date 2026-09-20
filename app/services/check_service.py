@@ -48,7 +48,7 @@ async def execute_single_check(
             timeout=timeout,
         )
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        body_text = response.text[:500] if response.text else ""
+        body_text = response.text if response.text else ""
         result["status_code"] = response.status_code
         result["response_time_ms"] = elapsed_ms
         result["response_size_bytes"] = len(response.content)
